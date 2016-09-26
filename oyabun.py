@@ -16,18 +16,25 @@ from urllib.request import urlretrieve
 
 # Local vars
 keepcharacters = (' ', '.', '_', '—', '(', ')')
+is_verbose = True
+threads_num = 5
+pause_sec = 15
+sleep_every_tracknum = 200
+output_path = './'
+files_count = 0
+is_only_downloadin = True
 
 
 # ===============================================================================
 # NB: Максимальное число альбомов для запроса - 100
 # https://vk.com/dev/audio.getAlbums
 # ===============================================================================
-def parse(config_path, output_path, is_verbose=True, sleep_every_tracknum=200, pause_sec=15):
+def parse(config_filename, out_filename):
     """ Загрузка альбомов в ini-файл """
 
     # Read config
     reader = configparser.ConfigParser()
-    reader.read(config_path)
+    reader.read(config_filename)
 
     _user_id = reader.get('USER', 'id')
     _user_pass = reader.get('USER', 'pass')
@@ -44,14 +51,14 @@ def parse(config_path, output_path, is_verbose=True, sleep_every_tracknum=200, p
         return
 
     vk = vk_session.get_api()
-    albums = vk.audio.getAlbums(owner_id=_user_id, count=100)
+    albums = vk.audio.getAlbums(owner_id=_user_id, count=100) #NB!
 
     if (not albums):
         raise Exception('No albums loaded')
 
     # Подготовка файла
-    config.read(output_path)
-    cfgfile = open(output_path, 'w')
+    config.read(out_filename)
+    cfgfile = open(out_filename, 'w')
     ctn, file_count = 0, 0
 
     # Заполнить файл альбомами, которых ещё нет
@@ -74,8 +81,8 @@ def parse(config_path, output_path, is_verbose=True, sleep_every_tracknum=200, p
 
                 # Пауза
                 ctn += 1
-                if (sleep_every_tracknum < ctn):
-                    print('Пауза %d секунд...' % pause_sec)
+                if sleep_every_tracknum < ctn:
+                    print('Пауза %d секунд (%d треков)...' % (pause_sec, file_count))
                     time.sleep(pause_sec)
                     ctn = 0
 
@@ -91,16 +98,11 @@ def parse(config_path, output_path, is_verbose=True, sleep_every_tracknum=200, p
 
         except vk_api.vk_api.Captcha:
             print("Сайт требует ввести капчу, работа прекращена (обработано %d файлов)" % file_count)
-            close_all(config, cfgfile, output_path)
+            close_all(config, cfgfile, out_filename)
             return
 
-    close_all(config, cfgfile, output_path)
-    print("Обработано %d файлов" % file_count)
-
-    # if cfgfile.closed:
-    # cfgfile = open(output_path, 'w')
-    # config.write(cfgfile)
-    # cfgfile.close()
+    close_all(config, cfgfile, out_filename)
+    print("Обработано %d треков" % file_count)
 
 
 # ===============================================================================
@@ -113,13 +115,15 @@ def close_all(config, fh, fname):
 
 
 # ===============================================================================
-def download(config_path, output_path='./', is_verbose=True, threads_num=5, pause_sec=15):
+def download(config_filename, output_path):
     """ Скачать файлы из форматированного файла """
 
     # Read config
     reader = configparser.ConfigParser()
-    reader.read(config_path)
+    reader.read(config_filename)
+    files_count = 0
 
+    # Каждая секция качается в N потоков
     for section in reader.sections():
         dirname = "%s/%s" % (output_path, (safe_fs_name(section).title()))
 
@@ -132,6 +136,7 @@ def download(config_path, output_path='./', is_verbose=True, threads_num=5, paus
         init_threads(threads_num, dirname, dict(reader[section]))
         # time.sleep(pause_sec)
 
+    print("Загружено %d файлов" % files_count)
 
 # ===============================================================================
 def init_threads(tnum, output_path, data_list):
@@ -160,7 +165,7 @@ def down_worker(queue, output_path):
     while True:
         # pprint(queue.get())
         title, url = queue.get()
-        title = title.title()  # I am sorry
+        title = title.title()  # But I couldnt stop
 
         try:
             fpath = '%s/%s.mp3' % (output_path, title)
@@ -168,16 +173,20 @@ def down_worker(queue, output_path):
             if not os.path.exists(fpath):
                 tmp_file = "%s.part" % fpath
 
+                # remove tmp file
                 if os.path.exists(tmp_file):
-                    print("- [r] temp file %s" % tmp_file)
+                    print("- temp file %s" % tmp_file)
                     os.remove(tmp_file)
 
-                print("+ [a] %s" % title)
+                # add file
+                print("+ %s" % title)
                 urlretrieve(url, tmp_file)
                 os.rename(tmp_file, fpath)
+                #files_count += 1
 
-            else:
-                print("> [s] %s" % title)
+            # skip file
+            elif not is_only_downloadin:
+                print("> %s" % title)
 
         except Exception as err:
             print(err)
@@ -195,6 +204,7 @@ def safe_fs_name(name):
     for c in name:
         newname += c if (c.isalnum() or c in keepcharacters) else '-'
 
+    # black magic regex
     newname = "".join(newname).strip()
     newname = re.sub(r'\-+', '-', newname)
     newname = re.sub(r'\s?\-\s?', '-', newname)
@@ -219,8 +229,17 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.action == 'download':
-        download(args.config, args.output, args.verbose, args.threads, args.pause)
+        is_verbose = args.verbose
+        threads_num = args.threads
+        pause_sec = args.pause
+
+        download(args.config, args.output)
+
     elif args.action == 'parse':
-        parse(args.config, args.output, args.verbose, args.every, args.pause)
+        is_verbose = args.verbose
+        sleep_every_tracknum = args.every
+        pause_sec = args.pause
+
+        parse(args.config, args.output)
     else:
         raise Exception('Неизвестное дейтсвие')
