@@ -8,21 +8,20 @@ import time
 import os, sys
 import argparse
 import html
-#from Downloada import Downloada
 from pprint import pprint
 
 import threading
 import queue
 from urllib.request import urlretrieve
 
-
 # Local vars
-keepcharacters = (' ','.','_', '—', '(', ')')
+keepcharacters = (' ', '.', '_', '—', '(', ')')
 
-#===============================================================================
+
+# ===============================================================================
 # NB: Максимальное число альбомов для запроса - 100
 # https://vk.com/dev/audio.getAlbums
-#===============================================================================
+# ===============================================================================
 def parse(config_path, output_path, is_verbose=True, sleep_every_tracknum=200, pause_sec=15):
     """ Загрузка альбомов в ini-файл """
 
@@ -30,9 +29,9 @@ def parse(config_path, output_path, is_verbose=True, sleep_every_tracknum=200, p
     reader = configparser.ConfigParser()
     reader.read(config_path)
 
-    _user_id=reader.get('USER', 'id')
-    _user_pass=reader.get('USER', 'pass')
-    _user_login=reader.get('USER', 'login')
+    _user_id = reader.get('USER', 'id')
+    _user_pass = reader.get('USER', 'pass')
+    _user_login = reader.get('USER', 'login')
 
     vk_session = vk_api.VkApi(_user_login, _user_pass)
     config = configparser.ConfigParser()
@@ -58,7 +57,7 @@ def parse(config_path, output_path, is_verbose=True, sleep_every_tracknum=200, p
     # Заполнить файл альбомами, которых ещё нет
     for album in albums['items']:
         aid, atitle = album['id'], album['title']
-        album_sec = safe_fs_name(atitle) #"%s | %s" % (atitle, aid)
+        album_sec = safe_fs_name(atitle)  # "%s | %s" % (atitle, aid)
 
         try:
             config.add_section(album_sec)
@@ -81,7 +80,7 @@ def parse(config_path, output_path, is_verbose=True, sleep_every_tracknum=200, p
                     ctn = 0
 
                 try:
-                    #pprint (track)
+                    # pprint (track)
                     config.set(album_sec, safe_fs_name(trackname), track['url'])
                     is_verbose and print(">> Добавлен %s/%s" % (atitle, trackname))
                     file_count += 1
@@ -98,20 +97,22 @@ def parse(config_path, output_path, is_verbose=True, sleep_every_tracknum=200, p
     close_all(config, cfgfile, output_path)
     print("Обработано %d файлов" % file_count)
 
-    #if cfgfile.closed:
-        #cfgfile = open(output_path, 'w')
-    #config.write(cfgfile)
-    #cfgfile.close()
+    # if cfgfile.closed:
+    # cfgfile = open(output_path, 'w')
+    # config.write(cfgfile)
+    # cfgfile.close()
 
-#===============================================================================
+
+# ===============================================================================
 def close_all(config, fh, fname):
     """ Закрыть ридер и файл """
     if fh.closed:
-        fh = open(output_path, 'w')
+        fh = open(fname, 'w')
     config.write(fh)
     fh.close()
 
-#===============================================================================
+
+# ===============================================================================
 def download(config_path, output_path='./', is_verbose=True, threads_num=5, pause_sec=15):
     """ Скачать файлы из форматированного файла """
 
@@ -122,25 +123,26 @@ def download(config_path, output_path='./', is_verbose=True, threads_num=5, paus
     for section in reader.sections():
         dirname = "%s/%s" % (output_path, (safe_fs_name(section).title()))
 
-        #pprint (dirname)
+        # pprint (dirname)
 
         # Создать директории-альбомы
         if not os.path.exists(dirname):
             os.makedirs(dirname)
 
         init_threads(threads_num, dirname, dict(reader[section]))
-        #time.sleep(pause_sec)
+        # time.sleep(pause_sec)
 
-#===============================================================================
+
+# ===============================================================================
 def init_threads(tnum, output_path, data_list):
     """ Запустить процессы на скачивание """
 
     # Create the queue and thread pool
     q = queue.Queue()
     for i in range(tnum):
-         t = threading.Thread(target=down_worker, kwargs={'queue': q, 'output_path': output_path})
-         t.daemon = True  # thread dies when main thread (only non-daemon thread) exits.
-         t.start()
+        t = threading.Thread(target=down_worker, kwargs={'queue': q, 'output_path': output_path})
+        t.daemon = True  # thread dies when main thread (only non-daemon thread) exits.
+        t.start()
 
     for item in data_list.items():
         q.put(item)
@@ -148,40 +150,42 @@ def init_threads(tnum, output_path, data_list):
     # block until all tasks are done
     q.join()
 
-#===============================================================================
+
+# ===============================================================================
 def down_worker(queue, output_path):
     """ Скачивающий процесс """
-    #title, url = queue.get()
-    #fpath = '%s/%s.mp3' % (output_path, title)
-    #print(fpath)
+    # title, url = queue.get()
+    # fpath = '%s/%s.mp3' % (output_path, title)
+    # print(fpath)
     while True:
-        #pprint(queue.get())
+        # pprint(queue.get())
         title, url = queue.get()
-        title = title.title() # I am sorry
+        title = title.title()  # I am sorry
 
         try:
             fpath = '%s/%s.mp3' % (output_path, title)
-            #pprint(fpath)
+            # pprint(fpath)
             if not os.path.exists(fpath):
                 tmp_file = "%s.part" % fpath
 
                 if os.path.exists(tmp_file):
-                    print ("- [r] temp file %s" % tmp_file)
+                    print("- [r] temp file %s" % tmp_file)
                     os.remove(tmp_file)
 
-                print ("+ [a] %s" % title)
+                print("+ [a] %s" % title)
                 urlretrieve(url, tmp_file)
                 os.rename(tmp_file, fpath)
 
             else:
-                print ("> [s] %s" % title)
+                print("> [s] %s" % title)
 
         except Exception as err:
             print(err)
 
         queue.task_done()
 
-#===============================================================================
+
+# ===============================================================================
 def safe_fs_name(name):
     """ Получить имя подходящее для сохранения файлов и папок """
 
@@ -198,9 +202,10 @@ def safe_fs_name(name):
 
     return newname
 
-#===============================================================================
+
+# ===============================================================================
 # public static void
-#===============================================================================
+# ===============================================================================
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("action", type=str, help="Действие: parse|download")
@@ -219,5 +224,3 @@ if __name__ == '__main__':
         parse(args.config, args.output, args.verbose, args.every, args.pause)
     else:
         raise Exception('Неизвестное дейтсвие')
-
-
