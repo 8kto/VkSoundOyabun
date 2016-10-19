@@ -18,15 +18,16 @@ from urllib.request import urlretrieve
 class Oyabun:
     # Local vars
     keepcharacters = (' ', '.', '_', '—', '(', ')')
-    is_verbose = True
+    is_verbose = False
     threads_num = 5
     pause_sec = 15
     sleep_every_tracknum = 200
     output_path = './'
     files_count = 0
     is_only_downloadin = True
+    only_first = -1
 
-    #+=========================================================================
+    #==========================================================================
     def parse(self, config_filename, out_filename):
         """ Загрузка альбомов в ini-файл
             NB: Максимальное число альбомов для запроса - 100
@@ -60,7 +61,7 @@ class Oyabun:
         # Подготовка файла
         config.read(out_filename)
         cfgfile = open(out_filename, 'w')
-        ctn, file_count = 0, 0
+        ctn, files_count = 0, 0
 
         # Заполнить файл альбомами, которых ещё нет
         for album in albums['items']:
@@ -77,13 +78,14 @@ class Oyabun:
             # Заполнить альбом треками
             try:
                 tracks = vk.audio.get(owner_id=_user_id, album_id=aid)
+
                 for track in tracks['items']:
                     trackname = "%s — %s" % (track['artist'], track['title'])
 
                     # Пауза
                     ctn += 1
                     if self.sleep_every_tracknum < ctn:
-                        print('Пауза %d секунд (%d треков)...' % (self.pause_sec, file_count))
+                        print('Пауза %d секунд (%d треков)...' % (self.pause_sec, files_count))
                         time.sleep(self.pause_sec)
                         ctn = 0
 
@@ -91,21 +93,29 @@ class Oyabun:
                         # pprint (track)
                         config.set(album_sec, self.safe_fs_name(trackname), track['url'])
                         self.is_verbose and print(">> Добавлен %s/%s" % (atitle, trackname))
-                        file_count += 1
+                        files_count += 1
+
+                        # Опция для первых N треков
+                        if self.only_first and (files_count >= self.only_first):
+                            raise RuntimeError
+                            return
 
                     except configparser.DuplicateSectionError as error_msg:
                         self.is_verbose and print(">> Пропуск %s/%s" % (atitle, trackname))
                         continue
 
             except vk_api.vk_api.Captcha:
-                print("Сайт требует ввести капчу, работа прекращена (обработано %d файлов)" % file_count)
-                self.close_all(config, cfgfile, out_filename)
+                print("CAPTCHA request from site, script quitted (%d files processed)" % files_count)
+
+            except RuntimeError:
+                print("Only first %d tracks processed" % files_count)
                 return
 
-        self.close_all(config, cfgfile, out_filename)
-        print("Обработано %d треков" % file_count)
+            finally:
+                self.close_all(config, cfgfile, out_filename)
+                print("Обработано %d треков" % files_count)
 
-    #==========================================================================
+    # ==========================================================================
     def close_all(self, config, fh, fname):
         """ Закрыть ридер и файл """
         if fh.closed:
@@ -113,7 +123,7 @@ class Oyabun:
         config.write(fh)
         fh.close()
 
-    #==========================================================================
+    # ==========================================================================
     def download(self, config_filename, output_path):
         """ Скачать файлы из форматированного файла """
 
@@ -137,7 +147,7 @@ class Oyabun:
 
         print("Загружено %d файлов" % files_count)
 
-    #==========================================================================
+    # ==========================================================================
     def init_threads(self, tnum, output_path, data_list):
         """ Запустить процессы на скачивание """
 
@@ -154,7 +164,7 @@ class Oyabun:
         # block until all tasks are done
         q.join()
 
-    #==========================================================================
+    # ==========================================================================
     def down_worker(self, queue, output_path):
         """ Скачивающий процесс """
         # title, url = queue.get()
@@ -191,13 +201,13 @@ class Oyabun:
 
             queue.task_done()
 
-    #==========================================================================
+    # ==========================================================================
     def safe_fs_name(self, name):
         """ Получить имя, подходящее для сохранения файлов и папок """
 
         name = html.unescape(name)
-
         newname = ''
+
         for c in name:
             newname += c if (c.isalnum() or c in self.keepcharacters) else '-'
 
@@ -209,38 +219,36 @@ class Oyabun:
 
         return newname
 
-    #==========================================================================
+    # ==========================================================================
     def init(self):
         """ Разобрать опции и запустить команду """
 
         parser = argparse.ArgumentParser(description="Oyabun is VKontakte audio albums downloader")
-        parser.add_argument("action", type=str, help="Action: parse|download")
-        parser.add_argument("config", type=str, help="File with auth params (VK login and pass)")
-        parser.add_argument("output", type=str, help="Output path of an action")
-        parser.add_argument("-v", "--verbose", help="Enable verbose output", action="store_true", default=True)
-        parser.add_argument("-e", "--every", help="Pause each n tracks", type=int, default=200)
-        parser.add_argument("-p", "--pause", help="Pause duration in seconds", type=int, default=15)
-        parser.add_argument("-t", "--threads", help="Threads to download number", type=int, default=5)
+        parser.add_argument("action", help="Action: parse|download", type=str)
+        parser.add_argument("output", help="Output path of an action", type=str)
+        parser.add_argument("-с", "--config", help="File with auth params (VK login and pass)", type=str,
+                            default='config.ini')
+        parser.add_argument("-v", "--verbose", help="Enable verbose output", action="store_true", default=self.is_verbose)
+        parser.add_argument("-e", "--every", help="Pause each n tracks", type=int, default=self.sleep_every_tracknum)
+        parser.add_argument("-p", "--pause", help="Pause duration in seconds", type=int, default=self.pause_sec)
+        parser.add_argument("-t", "--threads", help="Threads to download number", type=int, default=self.threads_num)
+        parser.add_argument("-f", "--first", help="First n tracks", type=int)
         args = parser.parse_args()
 
-        if args.action == 'download':
-            self.is_verbose = args.verbose
-            self.threads_num = args.threads
-            self.pause_sec = args.pause
+        self.is_verbose = args.verbose
+        self.sleep_every_tracknum = args.every
+        self.pause_sec = args.pause
+        self.threads_num = args.threads
+        self.only_first = args.first
 
-            self.download(args.config, args.output)
+        try:
+            getattr(self, args.action)(args.config, args.output)
+        except AttributeError:
+            print('Unknown action')
+            parser.print_usage()
 
-        elif args.action == 'parse':
-            self.is_verbose = args.verbose
-            self.sleep_every_tracknum = args.every
-            self.pause_sec = args.pause
-
-            self.parse(args.config, args.output)
-        else:
-            raise Exception('Неизвестное дейтсвие')
-
-#==============================================================================
+# ==============================================================================
 # public static void
-#==============================================================================
+# ==============================================================================
 if __name__ == '__main__':
     Oyabun().init()
