@@ -16,64 +16,77 @@ from urllib.request import urlretrieve
 
 
 class Oyabun:
-    # Local vars
+    """ Загрузчик альбомов из Vkontakte """
+
     keepcharacters = (' ', '.', '_', '—', '(', ')')
+    output_path = './'
+
     is_verbose = False
+    is_only_downloadin = True
+    only_first = None
+
     threads_num = 5
     pause_sec = 15
     sleep_every_tracknum = 200
-    output_path = './'
+    albums_count = 100
     files_count = 0
-    is_only_downloadin = True
-    only_first = -1
 
     #==========================================================================
     def parse(self, config_filename, out_filename):
-        """ Загрузка альбомов в ini-файл
-            NB: Максимальное число альбомов для запроса - 100
+        """
+            Загрузка альбомов из VK в ini-файл
+            NB: Максимальное число альбомов для запроса - 100 (albums_count)
             https://vk.com/dev/audio.getAlbums
+
+            :param config_filename: str
+            :param out_filename:    str
+            :except:                RuntimeError
         """
 
-        # Read config
+        # Прочитать файл с настройками vk-логина
         reader = configparser.ConfigParser()
         reader.read(config_filename)
 
-        _user_id = reader.get('USER', 'id')
-        _user_pass = reader.get('USER', 'pass')
-        _user_login = reader.get('USER', 'login')
-
-        vk_session = vk_api.VkApi(_user_login, _user_pass)
-        config = configparser.ConfigParser()
+        try:
+            _user_id = reader.get('USER', 'id')
+            _pass = reader.get('USER', 'pass')
+            _login = reader.get('USER', 'login')
+        except (configparser.NoSectionError, configparser.NoOptionError) as error_msg:
+            self.is_verbose and print(error_msg)
+            sys.exit("Wrong config")
 
         # Соединение с vk api
         try:
-            vk_session.authorization()
+            vk_session = self.get_vk_session(_login, _pass)
         except vk_api.AuthorizationError as error_msg:
-            print(error_msg)
-            return
+            self.is_verbose and print(error_msg)
+            sys.exit(error_msg)
 
         vk = vk_session.get_api()
-        albums = vk.audio.getAlbums(owner_id=_user_id, count=100)  # NB!
+        albums = vk.audio.getAlbums(owner_id=_user_id, count=self.albums_count)  # NB!
 
         if not albums:
-            raise Exception('No albums loaded')
+            raise RuntimeError('No albums loaded')
 
         # Подготовка файла
-        config.read(out_filename)
-        cfgfile = open(out_filename, 'w')
+        albums_config = configparser.ConfigParser()
+        albums_config.read(out_filename)
+        albums_fh = open(out_filename, 'w')
         ctn, files_count = 0, 0
+
+        write_close = lambda: self.write_and_close(albums_config, albums_fh, out_filename)
 
         # Заполнить файл альбомами, которых ещё нет
         for album in albums['items']:
             aid, atitle = album['id'], album['title']
-            album_sec = self.safe_fs_name(atitle)  # "%s | %s" % (atitle, aid)
+            album_section = self.safe_fs_name(atitle)
 
             try:
-                config.add_section(album_sec)
-                self.is_verbose and print("> Добавлен %s" % atitle)
+                albums_config.add_section(album_section)
+                self.is_verbose and print("> Add album %s" % atitle)
 
-            except configparser.DuplicateSectionError as error_msg:
-                self.is_verbose and print("> Пропуск %s" % atitle)
+            except configparser.DuplicateSectionError:
+                self.is_verbose and print("> Skip album %s" % atitle)
 
             # Заполнить альбом треками
             try:
@@ -85,14 +98,14 @@ class Oyabun:
                     # Пауза
                     ctn += 1
                     if self.sleep_every_tracknum < ctn:
-                        print('Пауза %d секунд (%d треков)...' % (self.pause_sec, files_count))
+                        print('Pause %d secs (%d tracks)...' % (self.pause_sec, files_count))
                         time.sleep(self.pause_sec)
                         ctn = 0
 
                     try:
                         # pprint (track)
-                        config.set(album_sec, self.safe_fs_name(trackname), track['url'])
-                        self.is_verbose and print(">> Добавлен %s/%s" % (atitle, trackname))
+                        albums_config.set(album_section, self.safe_fs_name(trackname), track['url'])
+                        self.is_verbose and print(">> Add %s/%s" % (atitle, trackname))
                         files_count += 1
 
                         # Опция для первых N треков
@@ -100,24 +113,49 @@ class Oyabun:
                             raise RuntimeError
                             return
 
-                    except configparser.DuplicateSectionError as error_msg:
-                        self.is_verbose and print(">> Пропуск %s/%s" % (atitle, trackname))
+                    except configparser.DuplicateSectionError:
+                        self.is_verbose and print(">> Skip %s/%s" % (atitle, trackname))
                         continue
 
             except vk_api.vk_api.Captcha:
                 print("CAPTCHA request from site, script quitted (%d files processed)" % files_count)
+                write_close()
 
             except RuntimeError:
                 print("Only first %d tracks processed" % files_count)
+                write_close()
                 return
 
-            finally:
-                self.close_all(config, cfgfile, out_filename)
-                print("Обработано %d треков" % files_count)
+        print("%d tracks processed" % files_count)
 
     # ==========================================================================
-    def close_all(self, config, fh, fname):
-        """ Закрыть ридер и файл """
+    @staticmethod
+    def get_vk_session(login, password):
+        """
+            Прочитать параметры соединения и вернуть vk-сессию
+
+            :param password: str
+            :param login: str
+            :return: vk_api.VkApi
+            :except vk_api.AuthorizationError
+        """
+
+        # Соединение с vk api
+        vk_session = vk_api.VkApi(login, password)
+        vk_session.authorization()
+
+        return vk_session
+
+    # ==========================================================================
+    @staticmethod
+    def write_and_close(config, fh, fname):
+        """
+            Записать конфиг в файл и закрыть его
+            :param config: configparser.ConfigParser
+            :param fh:     TextIOWrapper
+            :param fname:  str: Имя файла
+        """
+
         if fh.closed:
             fh = open(fname, 'w')
         config.write(fh)
@@ -241,6 +279,7 @@ class Oyabun:
         self.threads_num = args.threads
         self.only_first = args.first
 
+        # Динамический вызов метода action
         try:
             getattr(self, args.action)(args.config, args.output)
         except AttributeError:
