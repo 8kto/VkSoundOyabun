@@ -8,6 +8,7 @@ import time
 import os, sys
 import argparse
 import html
+import base64
 from pprint import pprint
 
 import threading
@@ -23,12 +24,12 @@ class Oyabun:
     path_delimeter = '-'
 
     is_verbose = False
-    is_only_downloadin = True
+    is_only_downloadin = False
     only_first = None
 
     threads_num = 5
     pause_sec = 15
-    sleep_every_tracknum = 200
+    sleep_each_tracknum = 200
     albums_count = 100
     files_count = 0
 
@@ -99,7 +100,7 @@ class Oyabun:
 
                     # Пауза
                     ctn += 1
-                    if self.sleep_every_tracknum < ctn:
+                    if self.sleep_each_tracknum < ctn:
                         print('Pause %d secs (%d tracks)...' % (self.pause_sec, self.files_count))
                         time.sleep(self.pause_sec)
                         ctn = 0
@@ -122,6 +123,7 @@ class Oyabun:
             except vk_api.vk_api.Captcha:
                 print("CAPTCHA request from site, script quitted (%d files processed)" % self.files_count)
                 write_close()
+                return
 
             except RuntimeError:
                 print("Only first %d tracks processed" % self.files_count)
@@ -142,7 +144,9 @@ class Oyabun:
         """
 
         # Соединение с vk api
-        vk_session = vk_api.VkApi(login, password)
+        # pprint( base64.b64decode( bytes(password, 'UTF8')))
+        # sys.exit()
+        vk_session = vk_api.VkApi(login, base64.b64decode( bytes(password, 'UTF8') ))
         vk_session.authorization()
 
         return vk_session
@@ -251,7 +255,7 @@ class Oyabun:
     def safe_fs_name(self, name):
         """ Получить имя, подходящее для сохранения файлов и папок """
 
-        name = html.unescape(name)
+        name = html.unescape(name) #todo remove it
         newname = ''
 
         # Оставить в имени только буквы, цифры и разрешённые символы,
@@ -272,22 +276,24 @@ class Oyabun:
 
         parser = argparse.ArgumentParser(description="Oyabun is VKontakte audio albums downloader")
         parser.add_argument("action", help="Action: parse|download", type=str)
+        parser.add_argument("config", help="File with auth params (VK login and pass)")
         parser.add_argument("target", help="Target path of an action (directory or config file)", type=str)
-        parser.add_argument("-с", "--config", help="File with auth params (VK login and pass)", type=str,
-                            default='config.ini')
         parser.add_argument("-v", "--verbose", help="Enable verbose output",
                             action="store_true", default=self.is_verbose)
-        parser.add_argument("-e", "--every", help="Pause each n tracks", type=int, default=self.sleep_every_tracknum)
+        parser.add_argument("-e", "--each", help="Pause each n tracks", type=int, default=self.sleep_each_tracknum)
         parser.add_argument("-p", "--pause", help="Pause duration in seconds", type=int, default=self.pause_sec)
         parser.add_argument("-t", "--threads", help="Threads to download number", type=int, default=self.threads_num)
         parser.add_argument("-f", "--first", help="First n tracks", type=int)
+        parser.add_argument("-d", "--only-downloading", help="Display messages only about downloading files (not skipped)",
+                            action="store_true", dest="is_only_downloadin", default=False)
         args = parser.parse_args()
 
         self.is_verbose = args.verbose
-        self.sleep_every_tracknum = args.every
+        self.sleep_each_tracknum = args.each
         self.pause_sec = args.pause
         self.threads_num = args.threads
         self.only_first = args.first
+        self.is_only_downloadin = args.is_only_downloadin
 
         # Динамический вызов метода action
         try:
