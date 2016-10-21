@@ -1,12 +1,12 @@
 VkSoundOyabun
 ====
-<img style="float: right;" src="./assets/onodera.png">
+
 VK Sound Oyabun — это загрузчик аудиотреков из альбомов Vkontakte. 
 Страничка скрипта на блоге автора — [Загрузка аудио vkontakte на Python (VkSoundOyabun) (TODO)](http://blog.axisful.info).
 
 > Оябун — главная фигура в иерархии якудза ([википедия](https://ru.wikipedia.org/wiki/%D0%AF%D0%BA%D1%83%D0%B4%D0%B7%D0%B0)).
 
-<!--![VK Sound Oyabun](./assets/onodera.png)-->
+![VK Sound Oyabun](./assets/onodera.png)
 
 ## Установка
 1. Скрипт зависит от модуля [vk_api](https://github.com/python273/vk_api):
