@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import vk_api
-import configparser
-import re
-import time
-import os, sys
 import argparse
-import html
 import base64
-from pprint import pprint
-
+import configparser
+import os
+import re
+import sys
+import time
+import vk_api
 import threading
 import queue
 from urllib.request import urlretrieve
@@ -33,7 +31,7 @@ class Oyabun:
     albums_count = 100
     files_count = 0
 
-    #==========================================================================
+    # ==========================================================================
     def parse(self, config_filename, out_filename):
         """
             Загрузка альбомов из VK в ini-файл
@@ -77,7 +75,8 @@ class Oyabun:
         ctn, files_count = 0, 0
 
         # Быстрый вызов метода
-        def write_close(): self.write_and_close(albums_config, albums_fh, out_filename)
+        def write_close():
+            self.write_and_close(albums_config, albums_fh, out_filename)
 
         # Заполнить файл альбомами, которых ещё нет
         for album in albums['items']:
@@ -114,7 +113,6 @@ class Oyabun:
                         # Опция для первых N треков
                         if self.only_first and (self.files_count >= self.only_first):
                             raise RuntimeError
-                            return
 
                     except configparser.DuplicateSectionError:
                         self.is_verbose and print(">> Skip %s/%s" % (atitle, trackname))
@@ -146,7 +144,7 @@ class Oyabun:
         # Соединение с vk api
         # pprint( base64.b64decode( bytes(password, 'UTF8')))
         # sys.exit()
-        vk_session = vk_api.VkApi(login, base64.b64decode( bytes(password, 'UTF8') ))
+        vk_session = vk_api.VkApi(login, base64.b64decode(bytes(password, 'UTF8')))
         vk_session.authorization()
 
         return vk_session
@@ -180,13 +178,14 @@ class Oyabun:
 
         # Каждая секция качается в threads_num потоков
         for section in reader.sections():
-            dirname = "%s/%s" % (output_path, (self.safe_fs_name(section).title()))
-            # pprint (dirname)
+            albumname = self.safe_fs_name(section).title()
+            dirname = "%s/%s" % (output_path, albumname)
 
             # Создать директории-альбомы
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
 
+            self.is_verbose and print("[%s]" % albumname)
             self.init_threads(dirname, dict(reader[section]))
             # time.sleep(pause_sec)
 
@@ -207,7 +206,8 @@ class Oyabun:
             tracks_queue.put(item)
 
         for i in range(self.threads_num):
-            t = threading.Thread(target=self.down_worker, kwargs={'tracks_queue': tracks_queue, 'output_path': output_path})
+            t = threading.Thread(target=self.down_worker,
+                                 kwargs={'tracks_queue': tracks_queue, 'output_path': output_path})
             t.daemon = True  # thread dies when main thread (only non-daemon thread) exits.
             t.start()
 
@@ -215,26 +215,26 @@ class Oyabun:
         tracks_queue.join()
 
     def down_worker(self, tracks_queue, output_path):
-        """ Скачивающий поток """
+        """
+            Скачивающий поток
 
-        # title, url = queue.get()
-        # fpath = '%s/%s.mp3' % (output_path, title)
-        # print(fpath)
+            :param tracks_queue: queue.Queue
+            :param output_path: str
+        """
 
         while True:
-            # pprint(queue.get())
             title, url = tracks_queue.get()
             title = title.title()  # I just couldn't stop
 
             try:
                 fpath = '%s/%s.mp3' % (output_path, title)
-                # pprint(fpath)
+
                 if not os.path.exists(fpath):
                     tmp_file = "%s.part" % fpath
 
                     # remove tmp file
                     if os.path.exists(tmp_file):
-                        self.is_verbose and  print("- temp file %s" % tmp_file)
+                        self.is_verbose and print("- temp file %s" % tmp_file)
                         os.remove(tmp_file)
 
                     # add file
@@ -248,14 +248,18 @@ class Oyabun:
                     self.is_verbose and print("> %s" % title)
 
             except Exception as err:
-                print(err)
+                self.is_verbose and print(err)
 
             tracks_queue.task_done()
 
     def safe_fs_name(self, name):
-        """ Получить имя, подходящее для сохранения файлов и папок """
+        """
+            Получить имя, подходящее для сохранения файлов и папок
 
-        name = html.unescape(name) #todo remove it
+            :param name: str
+            :return str
+        """
+
         newname = ''
 
         # Оставить в имени только буквы, цифры и разрешённые символы,
@@ -264,15 +268,25 @@ class Oyabun:
             newname += c if (c.isalnum() or c in self.keepcharacters) else self.path_delimeter
 
         # black magic regex (only for default delimeter)
-        newname = "".join(newname).strip()
-        newname = re.sub(r'\-+', '-', newname)
-        newname = re.sub(r'\s?\-\s?', '-', newname)
-        newname = re.sub(r'\-$', '', newname)
+        newname = "".join(newname)
+        newname = re.sub(r'-{2,}', '-', newname)
+        newname = re.sub(r'(\s-)|(-\s)', ' - ', newname)
+        newname = re.sub(r'\s-\s', ' — ', newname)
+        newname = re.sub(r'—-', '—', newname)
+        newname = re.sub(r'— —', '—', newname)
+        newname = re.sub(r'[-—]?$', '', newname)
+        newname = re.sub(r'\s{2,}', ' ', newname)
+        newname = newname.strip()
 
         return newname
 
     def init(self):
         """ Разобрать опции и запустить команду """
+
+        # export DEBUG_OYABUN=true
+        if os.environ.get('DEBUG_OYABUN'):
+            from pprint import pprint
+            pprint("Started in debug mode")
 
         parser = argparse.ArgumentParser(description="Oyabun is VKontakte audio albums downloader")
         parser.add_argument("action", help="Action: parse|download", type=str)
@@ -284,7 +298,8 @@ class Oyabun:
         parser.add_argument("-p", "--pause", help="Pause duration in seconds", type=int, default=self.pause_sec)
         parser.add_argument("-t", "--threads", help="Threads to download number", type=int, default=self.threads_num)
         parser.add_argument("-f", "--first", help="First n tracks", type=int)
-        parser.add_argument("-d", "--only-downloading", help="Display messages only about downloading files (not skipped)",
+        parser.add_argument("-d", "--only-downloading",
+                            help="Display messages only about downloading files (not skipped)",
                             action="store_true", dest="is_only_downloadin", default=False)
         args = parser.parse_args()
 
@@ -301,6 +316,7 @@ class Oyabun:
         except AttributeError as msg:
             print('Unknown action: %s' % msg)
             parser.print_usage()
+
 
 # ==============================================================================
 # public static void
