@@ -2,7 +2,7 @@ VkSoundOyabun
 ====
 
 VK Sound Oyabun — это загрузчик аудиотреков из альбомов Vkontakte. 
-Страничка скрипта на блоге автора — [Загрузка аудио vkontakte на Python (VkSoundOyabun) (TODO)](http://blog.axisful.info).
+Страничка скрипта на блоге автора — [Загрузка аудио vkontakte на Python (VkSoundOyabun)](http://blog.axisful.info/code/python/VkSoundOyabun).
 
 > Оябун — главная фигура в иерархии якудза ([википедия](https://ru.wikipedia.org/wiki/%D0%AF%D0%BA%D1%83%D0%B4%D0%B7%D0%B0)).
 
@@ -34,7 +34,7 @@ login=myemail@example.org
 * Пароль указывается в формате base64 для того, чтобы не хранить его в открытом виде.
 Получить зашифрованный пароль можно несколькими способами:
     * Онлайн-сервис для кодирования — https://www.base64encode.org
-    * Командная строка: 
+    * Командная строка (Linux): 
     ``` echo mypass | base64 ``` или
     ``` python -c 'import base64; print((base64.b64encode( b"mypass")))' ```
 
