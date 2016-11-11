@@ -17,9 +17,9 @@ from urllib.request import urlretrieve
 class Oyabun:
     """ Загрузчик альбомов из Vkontakte """
 
-    keepcharacters = (' ', '.', '_', '—', '(', ')')
-    output_path = './'
-    path_delimeter = '-'
+    keepcharacters = (" ", ".", "_", "—", "(", ")")
+    output_path = os.path.curdir
+    path_delimeter = "-"
 
     is_verbose = False
     is_only_downloadin = False
@@ -45,12 +45,12 @@ class Oyabun:
 
         # Прочитать файл с настройками vk-логина
         reader = configparser.ConfigParser()
-        reader.read(config_filename)
+        reader.read(config_filename, encoding="utf-8")
 
         try:
-            _user_id = reader.get('USER', 'id')
-            _pass = reader.get('USER', 'pass')
-            _login = reader.get('USER', 'login')
+            _user_id = reader.get("USER", "id")
+            _pass = reader.get("USER", "pass")
+            _login = reader.get("USER", "login")
         except (configparser.NoSectionError, configparser.NoOptionError) as error_msg:
             self.is_verbose and print(error_msg)
             sys.exit("Wrong config")
@@ -63,15 +63,15 @@ class Oyabun:
             sys.exit(error_msg)
 
         vk = vk_session.get_api()
-        albums = vk.audio.getAlbums(owner_id=_user_id, count=self.albums_count)  # NB!
+        albums = vk.audio.getAlbums(owner_id=_user_id, count=self.albums_count) # NB!
 
         if not albums:
-            raise RuntimeError('No albums loaded')
+            raise RuntimeError("No albums loaded")
 
         # Подготовка файла
         albums_config = configparser.ConfigParser()
-        albums_config.read(out_filename)
-        albums_fh = open(out_filename, 'w')
+        albums_config.read(out_filename, encoding="utf-8")
+        albums_fh = open(out_filename, "w", encoding="utf-8")
         ctn, files_count = 0, 0
 
         # Быстрый вызов метода
@@ -79,8 +79,8 @@ class Oyabun:
             self.write_and_close(albums_config, albums_fh, out_filename)
 
         # Заполнить файл альбомами, которых ещё нет
-        for album in albums['items']:
-            aid, atitle = album['id'], album['title']
+        for album in albums["items"]:
+            aid, atitle = album["id"], album["title"]
             album_section = self.safe_fs_name(atitle)
 
             try:
@@ -94,19 +94,19 @@ class Oyabun:
             try:
                 tracks = vk.audio.get(owner_id=_user_id, album_id=aid)
 
-                for track in tracks['items']:
-                    trackname = "%s — %s" % (track['artist'], track['title'])
+                for track in tracks["items"]:
+                    trackname = "%s — %s" % (track["artist"], track["title"])
 
                     # Пауза
                     ctn += 1
                     if self.sleep_each_tracknum < ctn:
-                        print('Pause %d secs (%d tracks)...' % (self.pause_sec, self.files_count))
+                        print("Pause %d secs (%d tracks)..." % (self.pause_sec, self.files_count))
                         time.sleep(self.pause_sec)
                         ctn = 0
 
                     try:
                         # pprint (track)
-                        albums_config.set(album_section, self.safe_fs_name(trackname), track['url'])
+                        albums_config.set(album_section, self.safe_fs_name(trackname), track["url"])
                         self.is_verbose and print(">> Add %s/%s" % (atitle, trackname))
                         self.files_count += 1
 
@@ -142,9 +142,7 @@ class Oyabun:
         """
 
         # Соединение с vk api
-        # pprint( base64.b64decode( bytes(password, 'UTF8')))
-        # sys.exit()
-        vk_session = vk_api.VkApi(login, base64.b64decode(bytes(password, 'UTF8')))
+        vk_session = vk_api.VkApi(login, base64.b64decode(bytes(password, "utf-8")))
         vk_session.authorization()
 
         return vk_session
@@ -159,7 +157,7 @@ class Oyabun:
         """
 
         if fh.closed:
-            fh = open(fname, 'w')
+            fh = open(fname, "w", encoding="utf-8")
         config.write(fh)
         fh.close()
 
@@ -174,12 +172,12 @@ class Oyabun:
 
         # Прочитать конфиг с альбомами
         reader = configparser.ConfigParser()
-        reader.read(config_filename)
+        reader.read(config_filename, encoding="utf-8")
 
         # Каждая секция качается в threads_num потоков
         for section in reader.sections():
             albumname = self.safe_fs_name(section).title()
-            dirname = "%s/%s" % (output_path, albumname)
+            dirname = os.path.join(output_path, albumname)# "%s/%s" % (output_path, albumname)
 
             # Создать директории-альбомы
             if not os.path.exists(dirname):
@@ -207,7 +205,7 @@ class Oyabun:
 
         for i in range(self.threads_num):
             t = threading.Thread(target=self.down_worker,
-                                 kwargs={'tracks_queue': tracks_queue, 'output_path': output_path})
+                                 kwargs={"tracks_queue": tracks_queue, "output_path": output_path})
             t.daemon = True  # thread dies when main thread (only non-daemon thread) exits.
             t.start()
 
@@ -227,7 +225,7 @@ class Oyabun:
             title = title.title()  # I just couldn't stop
 
             try:
-                fpath = '%s/%s.mp3' % (output_path, title)
+                fpath = os.path.join(output_path, "%s.mp3" % title) #fpath = "%s/%s.mp3" % (output_path, title)
 
                 if not os.path.exists(fpath):
                     tmp_file = "%s.part" % fpath
@@ -260,7 +258,7 @@ class Oyabun:
             :return str
         """
 
-        newname = ''
+        newname = ""
 
         # Оставить в имени только буквы, цифры и разрешённые символы,
         # заменяя всё остальное на разделитель
@@ -269,13 +267,13 @@ class Oyabun:
 
         # black magic regex (only for default delimeter)
         newname = "".join(newname)
-        newname = re.sub(r'-{2,}', '-', newname)
-        newname = re.sub(r'(\s-)|(-\s)', ' - ', newname)
-        newname = re.sub(r'\s-\s', ' — ', newname)
-        newname = re.sub(r'—-', '—', newname)
-        newname = re.sub(r'— —', '—', newname)
-        newname = re.sub(r'[-—]?$', '', newname)
-        newname = re.sub(r'\s{2,}', ' ', newname)
+        newname = re.sub(r"-{2,}", "-", newname)
+        newname = re.sub(r"(\s-)|(-\s)", " - ", newname)
+        newname = re.sub(r"\s-\s", " — ", newname)
+        newname = re.sub(r"—-", "—", newname)
+        newname = re.sub(r"— —", "—", newname)
+        newname = re.sub(r"[-—]?$", "", newname)
+        newname = re.sub(r"\s{2,}", " ", newname)
         newname = newname.strip()
 
         return newname
@@ -284,7 +282,7 @@ class Oyabun:
         """ Разобрать опции и запустить команду """
 
         # export DEBUG_OYABUN=true
-        if os.environ.get('DEBUG_OYABUN'):
+        if os.environ.get("DEBUG_OYABUN"):
             from pprint import pprint
             pprint("Started in debug mode")
 
@@ -314,14 +312,14 @@ class Oyabun:
         try:
             getattr(self, args.action)(args.config, args.target)
         except AttributeError as msg:
-            print('Unknown action: %s' % msg)
+            print("Unknown action: %s" % msg)
             parser.print_usage()
 
 
 # ==============================================================================
 # public static void
 # ==============================================================================
-if __name__ == '__main__':
+if __name__ == "__main__":
     obj = Oyabun()
 
     try:
