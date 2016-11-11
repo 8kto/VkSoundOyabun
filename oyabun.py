@@ -15,7 +15,12 @@ from urllib.request import urlretrieve
 
 
 class Oyabun:
-    """ Загрузчик альбомов из Vkontakte """
+    """
+        Загрузчик аудио-альбомов из Vkontakte.
+
+        :author Okto <web@axisful.info>
+        :link http://blog.axisful.info/code/python/VkSoundOyabun
+    """
 
     keepcharacters = (" ", ".", "_", "—", "(", ")")
     output_path = os.path.curdir
@@ -63,7 +68,7 @@ class Oyabun:
             sys.exit(error_msg)
 
         vk = vk_session.get_api()
-        albums = vk.audio.getAlbums(owner_id=_user_id, count=self.albums_count) # NB!
+        albums = vk.audio.getAlbums(owner_id=_user_id, count=self.albums_count)  # NB!
 
         if not albums:
             raise RuntimeError("No albums loaded")
@@ -177,7 +182,7 @@ class Oyabun:
         # Каждая секция качается в threads_num потоков
         for section in reader.sections():
             albumname = self.safe_fs_name(section).title()
-            dirname = os.path.join(output_path, albumname)# "%s/%s" % (output_path, albumname)
+            dirname = os.path.join(output_path, albumname)
 
             # Создать директории-альбомы
             if not os.path.exists(dirname):
@@ -185,7 +190,6 @@ class Oyabun:
 
             self.is_verbose and print("[%s]" % albumname)
             self.init_threads(dirname, dict(reader[section]))
-            # time.sleep(pause_sec)
 
         print("%d files donwloaded" % self.files_count)
 
@@ -225,7 +229,7 @@ class Oyabun:
             title = title.title()  # I just couldn't stop
 
             try:
-                fpath = os.path.join(output_path, "%s.mp3" % title) #fpath = "%s/%s.mp3" % (output_path, title)
+                fpath = os.path.join(output_path, "%s.mp3" % title)
 
                 if not os.path.exists(fpath):
                     tmp_file = "%s.part" % fpath
